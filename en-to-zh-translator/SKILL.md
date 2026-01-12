@@ -1,13 +1,13 @@
 ---
 name: en-to-zh-translator
-description: "Translate English text files (.txt, .md) to Chinese for language learning and translation practice. Use when the user asks to translate a text file to Chinese, create a Chinese version of an English document, or generate bilingual materials for translation training. The translation preserves sentence structure and maintains original line breaks for easy bidirectional reference."
+description: "Translate English text files (.txt, .md) to Chinese for language learning and translation practice. Use when the user asks to translate a text file to Chinese, create a Chinese version of an English document, or generate bilingual materials for translation training. The translation preserves sentence structure and combines broken sentences into complete lines."
 ---
 
 # English to Chinese Translator
 
 ## Overview
 
-Translates English text files to natural Chinese while preserving sentence structure for effective bidirectional translation practice. Output files use the `_zh` suffix (e.g., `document.txt` → `document_zh.txt`).
+Translates English text files to natural Chinese while preserving sentence structure for effective bidirectional translation practice. Combines broken sentences into complete lines. Output files use the `_zh` suffix (e.g., `document.txt` → `document_zh.txt`).
 
 ## Translation Workflow
 
@@ -26,7 +26,7 @@ Translates English text files to natural Chinese while preserving sentence struc
    ✓ Good: "I love learning foreign languages." → "我喜欢学习外语。"
    ✗ Avoid: Complex restructuring that loses alignment with source
 
-3. **Maintain line breaks** - Keep the original line structure. One English line → one Chinese line. This is critical for alignment and training purposes.
+3. **Combine broken sentences** - When an English sentence is broken across multiple lines, combine it into one complete line in Chinese. Preserve paragraph breaks and meaningful structural line breaks.
 
 4. **Handle special elements**:
    - Stage directions: `(Laughter)` → `（笑声）`, `(Applause)` → `（掌声）`
@@ -37,7 +37,8 @@ Translates English text files to natural Chinese while preserving sentence struc
 
 Before writing the output, verify:
 - [ ] Chinese flows naturally but isn't overly abstract
-- [ ] Each line from source has corresponding Chinese line
+- [ ] Broken sentences are combined into complete lines
+- [ ] Paragraph breaks are preserved
 - [ ] Special elements (stage directions, quotes) are properly handled
 - [ ] Meaning is preserved accurately without over-interpretation
 
@@ -55,8 +56,7 @@ to learn a new language every two years,
 ```
 我喜欢学习外语。
 
-事实上，我太喜欢了，以至于我想
-每两年学习一门新语言，
+事实上，我太喜欢了，以至于我想每两年学习一门新语言，
 ```
 
 ## Usage
