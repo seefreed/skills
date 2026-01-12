@@ -19,7 +19,7 @@ Output format (top-level array):
 ```json
 [
   {"en": "Sentence one.", "zh": " 句子一。"},
-  {"en": "Sentence two?", "zh": "句子一？"}
+  {"en": "Sentence two?", "zh": "句子二？"}
 ]
 ```
 
