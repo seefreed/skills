@@ -42,8 +42,14 @@ yt-dlp --print "%(id)s\n%(title)s\n%(duration)s\n%(uploader)s" "<VIDEO_URL>"
 
 ```bash
 ffmpeg -hide_banner -y -i "<id>.mp4" -ss <START> -to <END> \
-  -c:v libx264 -c:a aac -pix_fmt yuv420p -movflags +faststart \
+  -c:v libx264 -preset veryfast -c:a aac -pix_fmt yuv420p -movflags +faststart \
   "<chapter_title>.mp4"
+```
+
+## Validate clip
+
+```bash
+ffprobe -v error -show_format -show_streams "<chapter_title>.mp4"
 ```
 
 ## Convert VTT to SRT

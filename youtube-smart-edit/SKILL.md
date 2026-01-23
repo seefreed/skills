@@ -11,6 +11,15 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
 
 ## Workflow
 
+### 0) Use the automation script to reduce tokens
+
+- Prefer `scripts/smart_edit.py` for end-to-end runs (download, chaptering, clip cut, subtitle slicing).
+- The script uses heuristic chaptering to avoid AI token usage.
+- Create and use a local venv (no external packages required):
+  - `python3 -m venv .venv`
+  - `source .venv/bin/activate`
+  - `python scripts/smart_edit.py --help`
+
 ### 1) Confirm inputs and environment
 
 - Ask for the YouTube URL and whether English subtitles are available (manual preferred; auto as fallback).
@@ -25,6 +34,7 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
   - `<id>.mp4`
   - `<id>.en.vtt` (or `<id>.en.auto.vtt` if manual subs absent)
 - Also capture video metadata (id, title, duration, uploader) for reporting.
+  - The script handles this when `--url` is provided.
 
 ### 3) Prepare output directory
 
@@ -40,12 +50,16 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
 - Prefer semantic breaks (new concept, example, recap) over strict timing.
 - Produce a chapter list with:
   - `title`, `start`, `end`, `reason`
+  - The script uses sentence-boundary heuristics with `--min-seconds`, `--target-seconds`, `--max-seconds`.
 
 ### 5) Cut precise clips
 
 - Use ffmpeg with accurate trimming and stable outputs. Always re-encode:
   - Place `-ss` after `-i` for accurate seeking.
   - Use `libx264` + `aac`, `-movflags +faststart`, and `-pix_fmt yuv420p` to maximize player compatibility.
+  - Use a fast preset (e.g., `-preset veryfast`) to avoid long encodes and timeouts.
+- Run clips serially and avoid external timeouts that kill ffmpeg mid-write.
+- After each clip, validate with `ffprobe`; retry once if validation fails.
 - Name each clip with an ordered prefix: `<nn>_<chapter_title>.mp4` using safe filenames:
   - Use a 2-digit index starting at 01.
   - Replace spaces with underscores.
@@ -56,6 +70,7 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
 - Extract VTT segment for each chapter by time range.
 - Convert each segment to SRT:
   - `<nn>_<chapter_title>.en.srt`
+  - The script deletes per-chapter VTT unless `--keep-vtt` is set.
 
 ### 7) Report outputs
 
@@ -70,3 +85,4 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
 ## References
 
 - Command templates and copy/paste examples: `references/commands.md`
+- Automation: `scripts/smart_edit.py`
