@@ -7,11 +7,11 @@ description: Create a YouTube smart clipping workflow with yt-dlp and ffmpeg. Us
 
 ## Overview
 
-Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + English subtitles, segmenting content, cutting precise clips, and producing per-chapter English SRTs.
+Generate chapter clips from a YouTube video by downloading MP4 + English subtitles, segmenting content, cutting clips, and producing per-chapter English SRTs. Chapter length is user-selectable (1-2, 2-3, or 3-4 minutes).
 
 ## Workflow
 
-### 0) Use the automation script to reduce tokens
+### 1) Use the automation script to reduce tokens
 
 - Prefer `scripts/smart_edit.py` for end-to-end runs (download, chaptering, clip cut, subtitle slicing).
 - The script uses heuristic chaptering to avoid AI token usage.
@@ -22,13 +22,13 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
   - Speed-focused default: `--mode fast` (approximate cuts, faster encode, optional downscale).
   - Use `--mode accurate` when you need precise boundaries.
 
-### 1) Confirm inputs and environment
+### 2) Confirm inputs and environment
 
 - Ask for the YouTube URL and whether English subtitles are available (manual preferred; auto as fallback).
 - Check tools: `yt-dlp` and `ffmpeg`. If missing, install before proceeding.
 - Use command templates in `references/commands.md`.
 
-### 2) Download source video and subtitles
+### 3) Download source video and subtitles
 
 - Check current directory for existing source files before downloading:
   - If `<id>.mp4` and `<id>.en.vtt` already exist, skip yt-dlp download.
@@ -38,23 +38,28 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
 - Also capture video metadata (id, title, duration, uploader) for reporting.
   - The script handles this when `--url` is provided.
 
-### 3) Prepare output directory
+### 4) Prepare output directory
 
 - Create output directory using the original video title:
   - Replace spaces with underscores.
   - Remove/replace filesystem-unsafe characters.
 - Place all chapter clips and subtitle files into this directory.
 
-### 4) Generate fine-grained chapters (2-4 minutes)
+### 5) Generate fine-grained chapters (user-selected length)
 
-- Parse the English VTT and draft chapter boundaries based on topic changes and sentence boundaries.
-- Target 2-4 minutes per chapter; avoid cutting mid-sentence.
+- Ask the user to choose a chapter length preset: 1-2, 2-3, or 3-4 minutes.
+- Perform AI analysis (critical step):
+  - Read the full subtitle content.
+  - Understand the semantic flow and topic transitions.
+  - Identify natural topic switch points.
+- Draft chapter boundaries based on semantic topic changes and sentence boundaries.
+- Target the selected range; avoid cutting mid-sentence.
 - Prefer semantic breaks (new concept, example, recap) over strict timing.
 - Produce a chapter list with:
   - `title`, `start`, `end`, `reason`
-  - The script uses sentence-boundary heuristics with `--min-seconds`, `--target-seconds`, `--max-seconds`.
+  - The script uses `--chapter-preset` (or `--min-seconds/--target-seconds/--max-seconds` for custom).
 
-### 5) Cut precise clips (speed vs accuracy)
+### 6) Cut precise clips (speed vs accuracy)
 
 - Use ffmpeg with accurate trimming and stable outputs. Always re-encode:
   - Place `-ss` after `-i` for accurate seeking.
@@ -71,14 +76,14 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
   - Replace spaces with underscores.
   - Remove filesystem-unsafe characters.
 
-### 6) Extract and convert subtitles per chapter
+### 7) Extract and convert subtitles per chapter
 
 - Extract VTT segment for each chapter by time range.
 - Convert each segment to SRT:
   - `<nn>_<chapter_title>.en.srt`
   - The script deletes per-chapter VTT unless `--keep-vtt` is set.
 
-### 7) Report outputs
+### 8) Report outputs
 
 - Print output directory path, chapter list, and generated files.
 

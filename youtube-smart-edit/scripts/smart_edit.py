@@ -372,6 +372,12 @@ def main() -> None:
     parser.add_argument("--url", help="YouTube URL")
     parser.add_argument("--id", dest="vid", help="Video id if URL is not provided")
     parser.add_argument("--title", help="Override output directory title")
+    parser.add_argument(
+        "--chapter-preset",
+        choices=["1-2", "2-3", "3-4", "custom"],
+        default="2-3",
+        help="Chapter length preset in minutes",
+    )
     parser.add_argument("--min-seconds", type=int, default=120)
     parser.add_argument("--target-seconds", type=int, default=180)
     parser.add_argument("--max-seconds", type=int, default=240)
@@ -394,6 +400,14 @@ def main() -> None:
     title = resolve_title(args.url, args.title, vid)
     out_dir = sanitize_filename(title)
     os.makedirs(out_dir, exist_ok=True)
+
+    if args.chapter_preset != "custom":
+        preset_map = {
+            "1-2": (60, 90, 120),
+            "2-3": (120, 150, 180),
+            "3-4": (180, 210, 240),
+        }
+        args.min_seconds, args.target_seconds, args.max_seconds = preset_map[args.chapter_preset]
 
     cues = parse_vtt(vtt_path)
     chapters = build_chapters(cues, args.min_seconds, args.target_seconds, args.max_seconds)
