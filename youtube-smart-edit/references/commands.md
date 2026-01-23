@@ -41,7 +41,9 @@ yt-dlp --print "%(id)s\n%(title)s\n%(duration)s\n%(uploader)s" "<VIDEO_URL>"
 ## Cut clips
 
 ```bash
-ffmpeg -hide_banner -y -ss <START> -to <END> -i "<id>.mp4" -c copy "<chapter_title>.mp4"
+ffmpeg -hide_banner -y -i "<id>.mp4" -ss <START> -to <END> \
+  -c:v libx264 -c:a aac -pix_fmt yuv420p -movflags +faststart \
+  "<chapter_title>.mp4"
 ```
 
 ## Convert VTT to SRT
@@ -55,10 +57,3 @@ ffmpeg -hide_banner -y -i "<chapter_title>.vtt" "<chapter_title>.en.srt"
 ```bash
 ffmpeg -hide_banner -y -ss <START> -to <END> -i "<id>.en.vtt" "<chapter_title>.vtt"
 ```
-
-## Merge bilingual subtitles
-
-Use a line-paired SRT merge script or manual merge to create:
-- `<chapter_title>.en-zh.srt`
-
-Keep timecodes from the English SRT and insert Chinese as the next line per cue.

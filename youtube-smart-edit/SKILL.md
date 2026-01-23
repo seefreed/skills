@@ -19,6 +19,8 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
 
 ### 2) Download source video and subtitles
 
+- Check current directory for existing source files before downloading:
+  - If `<id>.mp4` and `<id>.en.vtt` already exist, skip yt-dlp download.
 - Download highest 1080p MP4 and English VTT. Save in current directory with ID-based names:
   - `<id>.mp4`
   - `<id>.en.vtt` (or `<id>.en.auto.vtt` if manual subs absent)
@@ -41,8 +43,9 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
 
 ### 5) Cut precise clips
 
-- Use ffmpeg with accurate trimming. Prefer re-encode for accuracy:
-  - `-ss` after `-i` and encode with `libx264` + `aac`.
+- Use ffmpeg with accurate trimming and stable outputs. Always re-encode:
+  - Place `-ss` after `-i` for accurate seeking.
+  - Use `libx264` + `aac`, `-movflags +faststart`, and `-pix_fmt yuv420p` to maximize player compatibility.
 - Name each clip with an ordered prefix: `<nn>_<chapter_title>.mp4` using safe filenames:
   - Use a 2-digit index starting at 01.
   - Replace spaces with underscores.
