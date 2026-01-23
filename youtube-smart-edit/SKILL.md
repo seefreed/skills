@@ -1,0 +1,69 @@
+---
+name: youtube-smart-edit
+description: Create a YouTube smart clipping workflow with yt-dlp and ffmpeg. Use when asked to download YouTube videos/subtitles, generate fine-grained chapters, cut precise clips, or generate per-chapter English SRTs.
+---
+
+# YouTube Smart Edit
+
+## Overview
+
+Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + English subtitles, segmenting content, cutting precise clips, and producing per-chapter English SRTs.
+
+## Workflow
+
+### 1) Confirm inputs and environment
+
+- Ask for the YouTube URL and whether English subtitles are available (manual preferred; auto as fallback).
+- Check tools: `yt-dlp` and `ffmpeg`. If missing, install before proceeding.
+- Use command templates in `references/commands.md`.
+
+### 2) Download source video and subtitles
+
+- Download highest 1080p MP4 and English VTT. Save in current directory with ID-based names:
+  - `<id>.mp4`
+  - `<id>.en.vtt` (or `<id>.en.auto.vtt` if manual subs absent)
+- Also capture video metadata (id, title, duration, uploader) for reporting.
+
+### 3) Prepare output directory
+
+- Create output directory using the original video title:
+  - Replace spaces with underscores.
+  - Remove/replace filesystem-unsafe characters.
+- Place all chapter clips and subtitle files into this directory.
+
+### 4) Generate fine-grained chapters (2-4 minutes)
+
+- Parse the English VTT and draft chapter boundaries based on topic changes and sentence boundaries.
+- Target 2-4 minutes per chapter; avoid cutting mid-sentence.
+- Prefer semantic breaks (new concept, example, recap) over strict timing.
+- Produce a chapter list with:
+  - `title`, `start`, `end`, `reason`
+
+### 5) Cut precise clips
+
+- Use ffmpeg with accurate trimming. Prefer re-encode for accuracy:
+  - `-ss` after `-i` and encode with `libx264` + `aac`.
+- Name each clip with an ordered prefix: `<nn>_<chapter_title>.mp4` using safe filenames:
+  - Use a 2-digit index starting at 01.
+  - Replace spaces with underscores.
+  - Remove filesystem-unsafe characters.
+
+### 6) Extract and convert subtitles per chapter
+
+- Extract VTT segment for each chapter by time range.
+- Convert each segment to SRT:
+  - `<nn>_<chapter_title>.en.srt`
+
+### 7) Report outputs
+
+- Print output directory path, chapter list, and generated files.
+
+## Output Rules
+
+- Source files stay in current directory (`<id>.mp4`, `<id>.en.vtt`).
+- All chapter clips and subtitle files are placed in the per-video directory named after the sanitized title.
+- Use consistent time formats (`HH:MM:SS.mmm`).
+
+## References
+
+- Command templates and copy/paste examples: `references/commands.md`
