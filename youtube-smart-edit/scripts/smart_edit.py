@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 TIME_RE = re.compile(r"^(\d{2}:\d{2}:\d{2}\.\d{3})\s+-->\s+(\d{2}:\d{2}:\d{2}\.\d{3})")
 SAFE_CHARS_RE = re.compile(r"[^A-Za-z0-9_-]+")
@@ -221,29 +221,109 @@ def resolve_vtt(vid: str) -> str:
     raise RuntimeError("No English VTT subtitle found")
 
 
-def cut_clip(mp4_path: str, out_path: str, start: float, end: float) -> None:
+def probe_streams(path: str) -> Dict[str, str]:
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,width,height",
+        "-of",
+        "csv=p=0",
+        path,
+    ]
+    output = run_cmd_capture(cmd).strip()
+    info: Dict[str, str] = {}
+    if output:
+        parts = output.split(",")
+        if len(parts) >= 1:
+            info["vcodec"] = parts[0].strip()
+        if len(parts) >= 2:
+            info["width"] = parts[1].strip()
+        if len(parts) >= 3:
+            info["height"] = parts[2].strip()
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "stream=codec_name",
+        "-of",
+        "csv=p=0",
+        path,
+    ]
+    output = run_cmd_capture(cmd).strip()
+    if output:
+        info["acodec"] = output.split(",")[0].strip()
+    return info
+
+
+def cut_clip(
+    mp4_path: str,
+    out_path: str,
+    start: float,
+    end: float,
+    *,
+    fast: bool,
+    scale_width: int,
+) -> None:
+    duration = max(0.0, end - start)
+    if fast:
+        info = probe_streams(mp4_path)
+        vcodec = info.get("vcodec", "")
+        acodec = info.get("acodec", "")
+        can_copy = vcodec in {"h264", "avc1"} and acodec == "aac"
+        if can_copy:
+            cmd = [
+                "ffmpeg",
+                "-hide_banner",
+                "-y",
+                "-ss",
+                format_timecode(start),
+                "-i",
+                mp4_path,
+                "-t",
+                format_timecode(duration),
+                "-c",
+                "copy",
+                "-movflags",
+                "+faststart",
+                out_path,
+            ]
+            run_cmd(cmd)
+            return
+
     cmd = [
         "ffmpeg",
         "-hide_banner",
         "-y",
-        "-i",
-        mp4_path,
-        "-ss",
-        format_timecode(start),
-        "-to",
-        format_timecode(end),
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-c:a",
-        "aac",
-        "-pix_fmt",
-        "yuv420p",
-        "-movflags",
-        "+faststart",
-        out_path,
+        "-ss" if fast else "-i",
     ]
+    if fast:
+        cmd.extend([format_timecode(start), "-i", mp4_path, "-t", format_timecode(duration)])
+    else:
+        cmd.extend([mp4_path, "-ss", format_timecode(start), "-to", format_timecode(end)])
+    cmd.extend(
+        [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast" if fast else "veryfast",
+            "-crf",
+            "28" if fast else "23",
+            "-c:a",
+            "aac",
+            "-pix_fmt",
+            "yuv420p",
+        ]
+    )
+    if fast and scale_width > 0:
+        cmd.extend(["-vf", f"scale='min({scale_width},iw)':-2"])
+    cmd.extend(["-movflags", "+faststart", out_path])
     run_cmd(cmd)
 
 
@@ -295,6 +375,8 @@ def main() -> None:
     parser.add_argument("--min-seconds", type=int, default=120)
     parser.add_argument("--target-seconds", type=int, default=180)
     parser.add_argument("--max-seconds", type=int, default=240)
+    parser.add_argument("--mode", choices=["fast", "accurate"], default="fast")
+    parser.add_argument("--scale-width", type=int, default=1280)
     parser.add_argument("--keep-vtt", action="store_true")
     args = parser.parse_args()
 
@@ -324,7 +406,14 @@ def main() -> None:
         chapter_vtt = os.path.join(out_dir, f"{base}.vtt")
         chapter_srt = os.path.join(out_dir, f"{base}.en.srt")
 
-        cut_clip(mp4_path, clip_path, ch.start, ch.end)
+        cut_clip(
+            mp4_path,
+            clip_path,
+            ch.start,
+            ch.end,
+            fast=args.mode == "fast",
+            scale_width=args.scale_width,
+        )
         try:
             validate_clip(clip_path)
         except Exception:
@@ -332,7 +421,14 @@ def main() -> None:
                 os.remove(clip_path)
             except OSError:
                 pass
-            cut_clip(mp4_path, clip_path, ch.start, ch.end)
+            cut_clip(
+                mp4_path,
+                clip_path,
+                ch.start,
+                ch.end,
+                fast=args.mode == "fast",
+                scale_width=args.scale_width,
+            )
             validate_clip(clip_path)
         extract_vtt_segment(vtt_path, chapter_vtt, ch.start, ch.end)
         vtt_to_srt(chapter_vtt, chapter_srt)

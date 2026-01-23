@@ -19,6 +19,8 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
   - `python3 -m venv .venv`
   - `source .venv/bin/activate`
   - `python scripts/smart_edit.py --help`
+  - Speed-focused default: `--mode fast` (approximate cuts, faster encode, optional downscale).
+  - Use `--mode accurate` when you need precise boundaries.
 
 ### 1) Confirm inputs and environment
 
@@ -52,7 +54,7 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
   - `title`, `start`, `end`, `reason`
   - The script uses sentence-boundary heuristics with `--min-seconds`, `--target-seconds`, `--max-seconds`.
 
-### 5) Cut precise clips
+### 5) Cut precise clips (speed vs accuracy)
 
 - Use ffmpeg with accurate trimming and stable outputs. Always re-encode:
   - Place `-ss` after `-i` for accurate seeking.
@@ -60,6 +62,10 @@ Generate 2-4 minute chapter clips from a YouTube video by downloading MP4 + Engl
   - Use a fast preset (e.g., `-preset veryfast`) to avoid long encodes and timeouts.
 - Run clips serially and avoid external timeouts that kill ffmpeg mid-write.
 - After each clip, validate with `ffprobe`; retry once if validation fails.
+- If speed is the priority (listening practice), prefer approximate cuts:
+  - Put `-ss` before `-i` to avoid decoding from the start every time.
+  - Use `-preset ultrafast` and a higher CRF (e.g., 28).
+  - Optionally downscale (e.g., width 1280) to reduce encode time.
 - Name each clip with an ordered prefix: `<nn>_<chapter_title>.mp4` using safe filenames:
   - Use a 2-digit index starting at 01.
   - Replace spaces with underscores.

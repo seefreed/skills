@@ -38,11 +38,20 @@ Expected outputs (current directory):
 yt-dlp --print "%(id)s\n%(title)s\n%(duration)s\n%(uploader)s" "<VIDEO_URL>"
 ```
 
-## Cut clips
+## Cut clips (accurate, slower)
 
 ```bash
 ffmpeg -hide_banner -y -i "<id>.mp4" -ss <START> -to <END> \
   -c:v libx264 -preset veryfast -c:a aac -pix_fmt yuv420p -movflags +faststart \
+  "<chapter_title>.mp4"
+```
+
+## Cut clips (fast, approximate)
+
+```bash
+ffmpeg -hide_banner -y -ss <START> -i "<id>.mp4" -t <DURATION> \
+  -c:v libx264 -preset ultrafast -crf 28 -c:a aac -pix_fmt yuv420p \
+  -vf "scale='min(1280,iw)':-2" -movflags +faststart \
   "<chapter_title>.mp4"
 ```
 
