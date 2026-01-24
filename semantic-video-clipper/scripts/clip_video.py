@@ -12,13 +12,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Iterable, List, Tuple
 
-try:
-    from tqdm import tqdm
-
-    HAS_TQDM = True
-except ImportError:
-    HAS_TQDM = False
-
 
 def check_ffmpeg() -> None:
     """Check if ffmpeg is available in the system PATH."""
@@ -298,26 +291,14 @@ def main() -> int:
         futures = {
             executor.submit(_process_segment, arg): arg[3] for arg in segment_args
         }
-        if HAS_TQDM:
-            with tqdm(total=len(futures), desc="Processing segments") as pbar:
-                for future in as_completed(futures):
-                    idx = futures[future]
-                    try:
-                        future.result()
-                        pbar.set_postfix_str(f"segment {idx}")
-                        pbar.update(1)
-                    except Exception as e:
-                        print(f"Error processing segment {idx}: {e}", file=sys.stderr)
-                        raise
-        else:
-            for future in as_completed(futures):
-                idx = futures[future]
-                try:
-                    future.result()
-                    print(f"Completed segment {idx}")
-                except Exception as e:
-                    print(f"Error processing segment {idx}: {e}", file=sys.stderr)
-                    raise
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                future.result()
+                print(f"Completed segment {idx}")
+            except Exception as e:
+                print(f"Error processing segment {idx}: {e}", file=sys.stderr)
+                raise
 
     return 0
 

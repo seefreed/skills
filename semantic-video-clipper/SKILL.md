@@ -27,28 +27,6 @@ Segment a long video into clips by having AI analyze subtitle semantics and iden
 - Shift subtitle times so each segment starts at 00:00
 - Save output files as `basename_1.mp4` + `basename_1.vtt`, `basename_2.*`, etc.
 
-## Setup
-
-Create a local virtual environment and activate:
-
-```bash
-cd semantic-video-clipper
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-Install optional progress bar package:
-
-```bash
-pip install -r requirements.txt
-```
-
-Or install manually:
-
-```bash
-pip install tqdm
-```
-
 ## Scripted execution
 
 Use `scripts/clip_video.py` with AI-provided segment ranges.
@@ -70,8 +48,6 @@ Optional flags:
 ## Dependencies
 
 - `ffmpeg` (external - must be in PATH)
-- Python packages (optional, see Setup above for installation):
-  - `tqdm`: Progress bar display
 
 Notes:
 - AI handles semantic analysis; Python script only handles parsing, timing, and FFmpeg clipping.
