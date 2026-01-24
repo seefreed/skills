@@ -1,20 +1,31 @@
 ---
 name: semantic-video-clipper
-description: Clip long videos into 25-60 second segments using subtitle semantic analysis (not punctuation-only cuts) while preserving complete sentences, and generate matching subtitle clips. Use when asked to segment videos (e.g., .mp4) based on .vtt/.srt subtitles with output filenames as source_basename_index in the same directory.
+description: AI analyzes subtitles to identify optimal split points, then clips video segments using FFmpeg based on AI-provided cue indices. Use when asked to segment videos (e.g., .mp4) based on .vtt/.srt subtitles.
 ---
 
 # Semantic Video Clipper
 
 ## Overview
 
-Segment a long video into 25-60 second clips by scoring subtitle semantic shifts while enforcing sentence-complete boundaries. Output clips and matching subtitle snippets with filenames `source_basename_<index>.*` in the same directory as the source video.
+Segment a long video into clips by having AI analyze subtitle semantics and identify natural topic boundaries. The lightweight Python script handles parsing, timing calculation, and FFmpeg clipping based on AI-provided segment indices. Output clips and matching subtitles with filenames `basename_<index>.*` in same directory as the source video.
 
 ## Workflow
 
-1. Parse subtitles from .vtt or .srt and compute lightweight semantic vectors.
-2. Choose boundary points that align with full sentence endings while maximizing semantic topic shifts.
-3. Cut the video and shift subtitle times so each clip starts at 00:00.
-4. Save output files as `basename_1.mp4` + `basename_1.vtt` (or .srt), `basename_2.*`, etc.
+### Step 1: AI Analysis
+- Read full subtitle content (.vtt or .srt)
+- Understand semantic flow and topic transitions
+- Identify natural split points that:
+  - Align with complete sentence endings
+  - Occur at topic shifts (new concepts, examples, recaps)
+  - Fit within duration constraints (typically 25-60 seconds)
+- Return segment ranges as cue index pairs: `[(0, 12), (12, 25), (25, 40), ...]`
+
+### Step 2: Python Script Execution
+- Parse subtitles into Cue objects with timing
+- Convert cue indices to time ranges
+- Call FFmpeg in parallel to clip video segments
+- Shift subtitle times so each segment starts at 00:00
+- Save output files as `basename_1.mp4` + `basename_1.vtt`, `basename_2.*`, etc.
 
 ## Setup
 
@@ -26,7 +37,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Install optional performance packages:
+Install optional progress bar package:
 
 ```bash
 pip install -r requirements.txt
@@ -35,31 +46,35 @@ pip install -r requirements.txt
 Or install manually:
 
 ```bash
-pip install scikit-learn scipy tqdm
+pip install tqdm
 ```
 
 ## Scripted execution
 
-Use `scripts/semantic_clip.py` for deterministic clipping.
+Use `scripts/clip_video.py` with AI-provided segment ranges.
 
 ```bash
-python3 scripts/semantic_clip.py /path/video.mp4 /path/subtitles.vtt
+python3 scripts/clip_video.py /path/video.mp4 /path/subtitles.vtt "0-12,12-25,25-40"
 ```
+
+The segments argument uses 0-based cue indices:
+- `"0-12,12-25,25-40"` - Three segments: cues 0-11, 12-24, 25-39
 
 Optional flags:
 
 ```bash
---min-seconds 25 --max-seconds 60 --dry-run --workers 4
+--workers 4          # Number of parallel workers (default: 4)
+--dry-run            # Only print segment plan without clipping
 ```
 
 ## Dependencies
 
 - `ffmpeg` (external - must be in PATH)
 - Python packages (optional, see Setup above for installation):
-  - `scikit-learn`, `scipy`: 10-100x faster TF-IDF computation
   - `tqdm`: Progress bar display
 
 Notes:
-- Sentence completeness uses punctuation only as a guardrail; clip boundaries are chosen by semantic similarity scoring (TF-IDF cosine) rather than punctuation-only slicing.
+- AI handles semantic analysis; Python script only handles parsing, timing, and FFmpeg clipping.
 - Output files always land beside the source video, named with an underscore plus 1-based index.
 - Parallel processing (`--workers`) provides 3-4x speedup for multi-clip videos.
+
