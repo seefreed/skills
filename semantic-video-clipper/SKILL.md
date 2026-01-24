@@ -29,10 +29,19 @@ Segment a long video into clips by having AI analyze subtitle semantics and iden
 
 ## Scripted execution
 
-Use `scripts/clip_video.py` with AI-provided segment ranges.
+**Script location**: `skills/semantic-video-clipper/scripts/clip_video.py`
+
+**Option 1: From skill directory** (recommended)
 
 ```bash
+cd skills/semantic-video-clipper
 python3 scripts/clip_video.py /path/video.mp4 /path/subtitles.vtt "0-12,12-25,25-40"
+```
+
+**Option 2: From any location**
+
+```bash
+python3 skills/semantic-video-clipper/scripts/clip_video.py /path/video.mp4 /path/subtitles.vtt "0-12,12-25,25-40"
 ```
 
 The segments argument uses 0-based cue indices:
