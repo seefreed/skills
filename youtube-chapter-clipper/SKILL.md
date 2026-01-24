@@ -1,9 +1,9 @@
 ---
-name: youtube-smart-edit
-description: Create a YouTube smart clipping workflow with yt-dlp and ffmpeg. Use when asked to download YouTube videos/subtitles, generate fine-grained chapters, cut precise clips, or generate per-chapter English SRTs.
+name: youtube-chapter-clipper
+description: Generate chapter clips from YouTube videos with yt-dlp and ffmpeg. Use when asked to download YouTube videos/subtitles, generate fine-grained chapters, cut precise clips, or generate per-chapter English SRTs.
 ---
 
-# YouTube Smart Edit
+# YouTube Chapter Clipper
 
 ## Overview
 
