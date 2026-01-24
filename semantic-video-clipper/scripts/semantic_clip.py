@@ -7,10 +7,40 @@ import argparse
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Iterable, List, Tuple
+
+try:
+    from scipy.sparse import csr_matrix
+    from sklearn.feature_extraction.text import TfidfVectorizer
+
+    HAS_SKLEARN = True
+except ImportError:
+    HAS_SKLEARN = False
+
+try:
+    from tqdm import tqdm
+
+    HAS_TQDM = True
+except ImportError:
+    HAS_TQDM = False
+
+
+def check_ffmpeg() -> None:
+    """Check if ffmpeg is available in the system PATH."""
+    if shutil.which("ffmpeg") is None:
+        print(
+            "Error: ffmpeg not found. Please install ffmpeg:\n"
+            "  macOS:   brew install ffmpeg\n"
+            "  Ubuntu:  sudo apt install ffmpeg\n"
+            "  Windows: Download from https://ffmpeg.org/download.html",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 @dataclass
@@ -61,7 +91,7 @@ def parse_time_line(line: str) -> Tuple[str, str]:
     return start, end
 
 
-def parse_vtt(lines: List[str]) -> List[Cue]:
+def _parse_cues_core(lines: List[str], skip_line_num: bool = False) -> List[Cue]:
     cues: List[Cue] = []
     i = 0
     while i < len(lines):
@@ -77,7 +107,7 @@ def parse_vtt(lines: List[str]) -> List[Cue]:
             while i < len(lines) and lines[i].strip():
                 i += 1
             continue
-        if "-->" not in line:
+        if skip_line_num and line.isdigit():
             i += 1
             if i >= len(lines):
                 break
@@ -97,36 +127,14 @@ def parse_vtt(lines: List[str]) -> List[Cue]:
         while i < len(lines) and not lines[i].strip():
             i += 1
     return cues
+
+
+def parse_vtt(lines: List[str]) -> List[Cue]:
+    return _parse_cues_core(lines, skip_line_num=False)
 
 
 def parse_srt(lines: List[str]) -> List[Cue]:
-    cues: List[Cue] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip("\ufeff").strip()
-        if not line:
-            i += 1
-            continue
-        if line.isdigit():
-            i += 1
-            if i >= len(lines):
-                break
-            line = lines[i].strip()
-        if "-->" not in line:
-            i += 1
-            continue
-        start_raw, end_raw = parse_time_line(line)
-        start = parse_timestamp(start_raw)
-        end = parse_timestamp(end_raw)
-        i += 1
-        text_lines: List[str] = []
-        while i < len(lines) and lines[i].strip():
-            text_lines.append(lines[i].rstrip("\n"))
-            i += 1
-        cues.append(Cue(start=start, end=end, lines=text_lines))
-        while i < len(lines) and not lines[i].strip():
-            i += 1
-    return cues
+    return _parse_cues_core(lines, skip_line_num=True)
 
 
 def load_subtitles(path: str) -> Tuple[List[Cue], str]:
@@ -168,14 +176,55 @@ def tokenize(text: str) -> List[str]:
     return re.findall(r"[A-Za-z0-9']+", text.lower())
 
 
-def build_tfidf_vectors(texts: List[str]) -> List[dict]:
+def _cosine_similarity_sparse(vec_a: csr_matrix, vec_b: csr_matrix) -> float:
+    dot = vec_a.dot(vec_b.T)[0, 0]
+    norm_a = math.sqrt(vec_a.power(2).sum())
+    norm_b = math.sqrt(vec_b.power(2).sum())
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return float(dot / (norm_a * norm_b))
+
+
+def _build_tfidf_vectors_fast(texts: List[str]) -> Tuple[csr_matrix, List[str]]:
+    vectorizer = TfidfVectorizer(tokenizer=tokenize, lowercase=False)
+    tfidf_matrix = vectorizer.fit_transform(texts)
+    return tfidf_matrix, vectorizer.get_feature_names_out().tolist()
+
+
+def _average_vectors_fast(tfidf_matrix: csr_matrix, indices: List[int]) -> csr_matrix:
+    if not indices:
+        return csr_matrix((1, tfidf_matrix.shape[1]))
+    selected = tfidf_matrix[indices]
+    avg = selected.mean(axis=0)
+    return csr_matrix(avg)
+
+
+def _cosine_similarity_dict(vec_a: dict, vec_b: dict) -> float:
+    if not vec_a or not vec_b:
+        return 0.0
+    dot = 0.0
+    for token, value in vec_a.items():
+        dot += value * vec_b.get(token, 0.0)
+    norm_a = math.sqrt(sum(value * value for value in vec_a.values()))
+    norm_b = math.sqrt(sum(value * value for value in vec_b.values()))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def build_tfidf_vectors(texts: List[str]):
+    if HAS_SKLEARN:
+        return _build_tfidf_vectors_fast(texts)
     token_lists = [tokenize(text) for text in texts]
     doc_count = len(token_lists)
     df = {}
     for tokens in token_lists:
         for token in set(tokens):
             df[token] = df.get(token, 0) + 1
-    idf = {token: math.log((doc_count + 1) / (freq + 1)) + 1.0 for token, freq in df.items()}
+    idf = {
+        token: math.log((doc_count + 1) / (freq + 1)) + 1.0
+        for token, freq in df.items()
+    }
     vectors: List[dict] = []
     for tokens in token_lists:
         if not tokens:
@@ -190,7 +239,11 @@ def build_tfidf_vectors(texts: List[str]) -> List[dict]:
     return vectors
 
 
-def average_vectors(vectors: List[dict]) -> dict:
+def average_vectors(vectors, indices: List[int] | None = None):
+    if HAS_SKLEARN and isinstance(vectors, csr_matrix):
+        if indices is None:
+            indices = list(range(vectors.shape[0]))
+        return _average_vectors_fast(vectors, indices)
     if not vectors:
         return {}
     sums = {}
@@ -201,26 +254,30 @@ def average_vectors(vectors: List[dict]) -> dict:
     return {token: value / count for token, value in sums.items()}
 
 
-def cosine_similarity(vec_a: dict, vec_b: dict) -> float:
-    if not vec_a or not vec_b:
-        return 0.0
-    dot = 0.0
-    for token, value in vec_a.items():
-        dot += value * vec_b.get(token, 0.0)
-    norm_a = math.sqrt(sum(value * value for value in vec_a.values()))
-    norm_b = math.sqrt(sum(value * value for value in vec_b.values()))
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)
+def cosine_similarity(vec_a, vec_b) -> float:
+    if HAS_SKLEARN and isinstance(vec_a, csr_matrix):
+        return _cosine_similarity_sparse(vec_a, vec_b)
+    return _cosine_similarity_dict(vec_a, vec_b)
 
 
-def compute_boundary_costs(vectors: List[dict], window: int = 3) -> dict:
-    costs = {0: 0.0, len(vectors): 0.0}
-    for pos in range(1, len(vectors)):
-        left_vecs = vectors[max(0, pos - window) : pos]
-        right_vecs = vectors[pos : min(len(vectors), pos + window)]
-        left_avg = average_vectors(left_vecs)
-        right_avg = average_vectors(right_vecs)
+def compute_boundary_costs(vectors, window: int = 3) -> dict:
+    if HAS_SKLEARN and isinstance(vectors, tuple):
+        tfidf_matrix, _ = vectors
+        n_docs = tfidf_matrix.shape[0]
+    else:
+        n_docs = len(vectors)
+    costs = {0: 0.0, n_docs: 0.0}
+    for pos in range(1, n_docs):
+        if HAS_SKLEARN and isinstance(vectors, tuple):
+            left_indices = list(range(max(0, pos - window), pos))
+            right_indices = list(range(pos, min(n_docs, pos + window)))
+            left_avg = average_vectors(vectors[0], left_indices)
+            right_avg = average_vectors(vectors[0], right_indices)
+        else:
+            left_vecs = vectors[max(0, pos - window) : pos]
+            right_vecs = vectors[pos : min(n_docs, pos + window)]
+            left_avg = average_vectors(left_vecs)
+            right_avg = average_vectors(right_vecs)
         costs[pos] = cosine_similarity(left_avg, right_avg)
     return costs
 
@@ -241,7 +298,9 @@ def segment_cues(
         return []
     vectors = build_tfidf_vectors([cue.text for cue in cues])
     boundary_costs = compute_boundary_costs(vectors)
-    sentence_end_positions = {i + 1 for i, cue in enumerate(cues) if is_sentence_end(cue.text)}
+    sentence_end_positions = {
+        i + 1 for i, cue in enumerate(cues) if is_sentence_end(cue.text)
+    }
     sentence_end_positions.add(len(cues))
     positions = [0] + sorted(sentence_end_positions)
     inf = 1e12
@@ -260,7 +319,9 @@ def segment_cues(
                 continue
             if duration > max_seconds:
                 break
-            boundary_cost = 0.0 if end_pos == len(cues) else boundary_costs.get(end_pos, 0.0)
+            boundary_cost = (
+                0.0 if end_pos == len(cues) else boundary_costs.get(end_pos, 0.0)
+            )
             cost = dp[i] + boundary_cost
             if cost < dp[j]:
                 dp[j] = cost
@@ -282,7 +343,9 @@ def segment_cues(
 def shift_cues(cues: List[Cue], offset: float) -> List[Cue]:
     shifted = []
     for cue in cues:
-        shifted.append(Cue(start=cue.start - offset, end=cue.end - offset, lines=cue.lines))
+        shifted.append(
+            Cue(start=cue.start - offset, end=cue.end - offset, lines=cue.lines)
+        )
     return shifted
 
 
@@ -310,15 +373,49 @@ def clip_video(
         "aac",
         output_path,
     ]
-    subprocess.run(cmd, check=True)
+    try:
+        result = subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=3600,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"FFmpeg timed out while clipping {video_path} from {start:.3f}s to {end:.3f}s"
+        )
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(
+            f"FFmpeg failed to clip {video_path} from {start:.3f}s to {end:.3f}s:\n"
+            f"stderr: {e.stderr}\n"
+            f"stdout: {e.stdout}"
+        )
 
 
-def derive_output_paths(video_path: str, index: int, subtitle_ext: str) -> Tuple[str, str]:
+def derive_output_paths(
+    video_path: str, index: int, subtitle_ext: str
+) -> Tuple[str, str]:
     base_dir = os.path.dirname(video_path)
     base_name = os.path.splitext(os.path.basename(video_path))[0]
     video_out = os.path.join(base_dir, f"{base_name}_{index}.mp4")
     subtitle_out = os.path.join(base_dir, f"{base_name}_{index}.{subtitle_ext}")
     return video_out, subtitle_out
+
+
+def _process_segment(args: Tuple[str, List[Cue], int, int, int, str, str]) -> None:
+    video_path, cues, start_pos, end_pos, idx, subtitle_ext, base_name = args
+    seg_start = cues[start_pos].start
+    seg_end = cues[end_pos - 1].end
+    seg_cues = shift_cues(cues[start_pos:end_pos], seg_start)
+    base_dir = os.path.dirname(video_path)
+    video_out = os.path.join(base_dir, f"{base_name}_{idx}.mp4")
+    subtitle_out = os.path.join(base_dir, f"{base_name}_{idx}.{subtitle_ext}")
+    clip_video(video_path, seg_start, seg_end, video_out)
+    if subtitle_ext == "vtt":
+        write_vtt(seg_cues, subtitle_out)
+    else:
+        write_srt(seg_cues, subtitle_out)
 
 
 def main() -> int:
@@ -329,9 +426,18 @@ def main() -> int:
     parser.add_argument("subtitles", help="Path to the subtitle file (.vtt or .srt).")
     parser.add_argument("--min-seconds", type=float, default=25.0)
     parser.add_argument("--max-seconds", type=float, default=60.0)
-    parser.add_argument("--dry-run", action="store_true", help="Only print segment plan.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Only print segment plan."
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Number of parallel workers for video clipping.",
+    )
     args = parser.parse_args()
 
+    check_ffmpeg()
     cues, subtitle_ext = load_subtitles(args.subtitles)
     segments = segment_cues(cues, args.min_seconds, args.max_seconds)
 
@@ -339,8 +445,43 @@ def main() -> int:
         for idx, (start_pos, end_pos) in enumerate(segments, start=1):
             start_time = cues[start_pos].start
             end_time = cues[end_pos - 1].end
-            print(f"{idx}: {start_time:.3f}s -> {end_time:.3f}s ({end_time - start_time:.2f}s)")
+            print(
+                f"{idx}: {start_time:.3f}s -> {end_time:.3f}s ({end_time - start_time:.2f}s)"
+            )
         return 0
+
+    base_name = os.path.splitext(os.path.basename(args.video))[0]
+    segment_args = [
+        (args.video, cues, start_pos, end_pos, idx, subtitle_ext, base_name)
+        for idx, (start_pos, end_pos) in enumerate(segments, start=1)
+    ]
+
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures = {
+            executor.submit(_process_segment, arg): arg[3] for arg in segment_args
+        }
+        if HAS_TQDM:
+            with tqdm(total=len(futures), desc="Processing segments") as pbar:
+                for future in as_completed(futures):
+                    idx = futures[future]
+                    try:
+                        future.result()
+                        pbar.set_postfix_str(f"segment {idx}")
+                        pbar.update(1)
+                    except Exception as e:
+                        print(f"Error processing segment {idx}: {e}", file=sys.stderr)
+                        raise
+        else:
+            for future in as_completed(futures):
+                idx = futures[future]
+                try:
+                    future.result()
+                    print(f"Completed segment {idx}")
+                except Exception as e:
+                    print(f"Error processing segment {idx}: {e}", file=sys.stderr)
+                    raise
+
+    return 0
 
     for idx, (start_pos, end_pos) in enumerate(segments, start=1):
         seg_start = cues[start_pos].start
